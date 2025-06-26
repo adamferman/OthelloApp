@@ -6,20 +6,19 @@ class OthelloGame {
         this.gameOver = false;
         this.showHints = false;
         this.validMoves = [];
-        this.isAIEnabled = true; // Black will be AI
-        this.aiPlayer = 'black';
-        this.humanPlayer = 'white';
+        this.isAIEnabled = true; // Both players are AI
+        this.aiPlayer1 = 'black';
+        this.aiPlayer2 = 'white';
         this.isAIThinking = false;
+        this.moveDelay = 500; // 0.5 second delay between moves
         
         this.initializeBoard();
         this.setupEventListeners();
         this.renderBoard();
         this.updateGameInfo();
         
-        // Start AI move if black goes first
-        if (this.currentPlayer === this.aiPlayer) {
-            this.makeAIMove();
-        }
+        // Start the AI vs AI game
+        setTimeout(() => this.makeAIMove(), 1000); // Initial delay before first move
     }
 
     initializeBoard() {
@@ -76,26 +75,8 @@ class OthelloGame {
     }
 
     handleCellClick(row, col) {
-        if (this.gameOver || !this.isValidMove(row, col) || this.isAIThinking) {
-            return;
-        }
-
-        // Only allow human player to click
-        if (this.currentPlayer === this.aiPlayer) {
-            return;
-        }
-
-        this.makeMove(row, col);
-        this.switchPlayer();
-        this.calculateValidMoves();
-        this.renderBoard();
-        this.updateGameInfo();
-        this.checkGameEnd();
-
-        // Make AI move after human move
-        if (!this.gameOver && this.currentPlayer === this.aiPlayer) {
-            setTimeout(() => this.makeAIMove(), 500);
-        }
+        // Disable human interaction - both players are AI
+        return;
     }
 
     isValidMove(row, col) {
@@ -212,7 +193,7 @@ class OthelloGame {
 
     // AI Methods
     makeAIMove() {
-        if (this.gameOver || this.currentPlayer !== this.aiPlayer) {
+        if (this.gameOver) {
             return;
         }
 
@@ -230,21 +211,56 @@ class OthelloGame {
                 this.renderBoard();
                 this.updateGameInfo();
                 this.checkGameEnd();
+                
+                // Schedule next AI move if game continues
+                if (!this.gameOver) {
+                    setTimeout(() => this.makeAIMove(), this.moveDelay);
+                }
+            } else {
+                // No valid moves for current player, skip turn
+                this.switchPlayer();
+                this.calculateValidMoves();
+                this.updateGameInfo();
+                this.renderBoard();
+                
+                if (this.validMoves.length === 0) {
+                    // No moves for either player - game over
+                    this.endGame();
+                } else {
+                    // Continue with next player
+                    setTimeout(() => this.makeAIMove(), this.moveDelay);
+                }
             }
             
             this.isAIThinking = false;
-        }, 800); // AI "thinks" for 800ms
+        }, 300); // AI "thinks" for 300ms
     }
 
     findBestMove() {
-        const moves = this.getValidMovesForPlayer(this.aiPlayer);
+        const moves = this.getValidMovesForPlayer(this.currentPlayer);
         if (moves.length === 0) return null;
 
         let bestMove = null;
         let bestScore = -Infinity;
 
+        // Add some variation for different AI strategies
+        const isBlackAI = this.currentPlayer === 'black';
+        
         for (const move of moves) {
-            const score = this.evaluateMove(move.row, move.col);
+            let score = this.evaluateMove(move.row, move.col);
+            
+            // Add slight strategy differences between the two AIs
+            if (isBlackAI) {
+                // Black AI favors aggressive play (more piece capture)
+                score += this.calculateImmediatePieceGain(move.row, move.col) * 3;
+            } else {
+                // White AI favors positional play (corners and stability)
+                score += this.calculatePositionalValue(move.row, move.col) * 2;
+            }
+            
+            // Add small random factor to make games less predictable
+            score += Math.random() * 5;
+            
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = move;
@@ -254,13 +270,50 @@ class OthelloGame {
         return bestMove;
     }
 
+    calculateImmediatePieceGain(row, col) {
+        const directions = [
+            [-1, -1], [-1, 0], [-1, 1],
+            [0, -1],           [0, 1],
+            [1, -1],  [1, 0],  [1, 1]
+        ];
+
+        let totalFlipped = 0;
+        for (const [dr, dc] of directions) {
+            const flipped = this.getFlippedPieces(row, col, dr, dc);
+            totalFlipped += flipped.length;
+        }
+        
+        return totalFlipped;
+    }
+
+    calculatePositionalValue(row, col) {
+        let value = 0;
+        
+        // Corner positions are very valuable
+        if (this.isCorner(row, col)) {
+            value += 50;
+        }
+        
+        // Edge positions are valuable
+        if (this.isEdge(row, col) && !this.isCorner(row, col)) {
+            value += 15;
+        }
+        
+        // Center positions have moderate value
+        if (row >= 2 && row <= 5 && col >= 2 && col <= 5) {
+            value += 5;
+        }
+        
+        return value;
+    }
+
     evaluateMove(row, col) {
         // Create a copy of the board to simulate the move
         const boardCopy = this.copyBoard();
         const originalPlayer = this.currentPlayer;
         
         // Simulate the move
-        this.simulateMove(boardCopy, row, col, this.aiPlayer);
+        this.simulateMove(boardCopy, row, col, this.currentPlayer);
         
         // Calculate score based on multiple factors
         let score = 0;
@@ -281,8 +334,10 @@ class OthelloGame {
         }
         
         // 4. Mobility (number of moves available after this move)
-        const mobilityScore = this.calculateMobility(boardCopy, this.aiPlayer) - 
-                             this.calculateMobility(boardCopy, this.humanPlayer);
+        const currentPlayerMobility = this.calculateMobility(boardCopy, this.currentPlayer);
+        const opponentPlayer = this.currentPlayer === 'black' ? 'white' : 'black';
+        const opponentMobility = this.calculateMobility(boardCopy, opponentPlayer);
+        const mobilityScore = currentPlayerMobility - opponentMobility;
         score += mobilityScore * 2;
         
         // 5. Piece count difference
@@ -392,34 +447,36 @@ class OthelloGame {
     }
 
     calculatePieceScore(board) {
-        let aiPieces = 0;
-        let humanPieces = 0;
+        let currentPlayerPieces = 0;
+        let opponentPieces = 0;
+        const opponent = this.currentPlayer === 'black' ? 'white' : 'black';
         
         for (let row = 0; row < this.boardSize; row++) {
             for (let col = 0; col < this.boardSize; col++) {
-                if (board[row][col] === this.aiPlayer) {
-                    aiPieces++;
-                } else if (board[row][col] === this.humanPlayer) {
-                    humanPieces++;
+                if (board[row][col] === this.currentPlayer) {
+                    currentPlayerPieces++;
+                } else if (board[row][col] === opponent) {
+                    opponentPieces++;
                 }
             }
         }
         
-        return aiPieces - humanPieces;
+        return currentPlayerPieces - opponentPieces;
     }
 
     calculateStability(board) {
-        let aiStable = 0;
-        let humanStable = 0;
+        let currentPlayerStable = 0;
+        let opponentStable = 0;
+        const opponent = this.currentPlayer === 'black' ? 'white' : 'black';
         
         // Check corners (always stable)
         const corners = [[0,0], [0,7], [7,0], [7,7]];
         for (const [row, col] of corners) {
-            if (board[row][col] === this.aiPlayer) aiStable++;
-            else if (board[row][col] === this.humanPlayer) humanStable++;
+            if (board[row][col] === this.currentPlayer) currentPlayerStable++;
+            else if (board[row][col] === opponent) opponentStable++;
         }
         
-        return aiStable - humanStable;
+        return currentPlayerStable - opponentStable;
     }
 
     getValidMovesForPlayer(player) {
@@ -447,18 +504,20 @@ class OthelloGame {
         const currentPlayerElement = document.getElementById('current-player');
         
         if (this.isAIThinking) {
-            currentPlayerElement.textContent = 'AI is thinking...';
+            const playerName = this.currentPlayer === 'black' ? 'Black AI' : 'White AI';
+            currentPlayerElement.textContent = `${playerName} is thinking...`;
         } else {
-            const playerName = this.currentPlayer === 'black' ? 'AI (Black)' : 'Human (White)';
+            const playerName = this.currentPlayer === 'black' ? 'Black AI' : 'White AI';
             currentPlayerElement.textContent = `${playerName}'s Turn`;
         }
         
         const messageElement = document.getElementById('game-message');
         
         if (this.isAIThinking) {
-            messageElement.textContent = 'AI is calculating the best move...';
+            const playerName = this.currentPlayer === 'black' ? 'Black AI' : 'White AI';
+            messageElement.textContent = `${playerName} is calculating the best move...`;
         } else if (this.validMoves.length === 0 && !this.gameOver) {
-            const playerName = this.currentPlayer === 'black' ? 'AI' : 'Human';
+            const playerName = this.currentPlayer === 'black' ? 'Black AI' : 'White AI';
             messageElement.textContent = `No valid moves for ${playerName}. Switching turns...`;
             setTimeout(() => {
                 this.switchPlayer();
@@ -467,18 +526,12 @@ class OthelloGame {
                 this.renderBoard();
                 if (this.validMoves.length === 0) {
                     this.endGame();
-                } else if (this.currentPlayer === this.aiPlayer) {
-                    this.makeAIMove();
+                } else {
+                    setTimeout(() => this.makeAIMove(), this.moveDelay);
                 }
             }, 1500);
         } else if (!this.gameOver) {
-            if (this.currentPlayer === this.aiPlayer) {
-                messageElement.textContent = 'AI is planning its move...';
-            } else {
-                messageElement.textContent = this.showHints ? 
-                    'Valid moves are highlighted in yellow' : 
-                    'Click on a valid square to place your piece';
-            }
+            messageElement.textContent = 'Watch the AI players compete! Click "New Game" to restart.';
         }
     }
 
@@ -532,18 +585,18 @@ class OthelloGame {
         
         if (scores.black > scores.white) {
             winner = 'black';
-            winnerText = 'AI Wins!';
+            winnerText = 'Black AI Wins!';
         } else if (scores.white > scores.black) {
             winner = 'white';
-            winnerText = 'Human Wins!';
+            winnerText = 'White AI Wins!';
         } else {
             winnerText = "It's a Tie!";
         }
 
         document.getElementById('winner-text').textContent = winnerText;
-        document.getElementById('final-score').textContent = `Final Score - AI (Black): ${scores.black}, Human (White): ${scores.white}`;
+        document.getElementById('final-score').textContent = `Final Score - Black AI: ${scores.black}, White AI: ${scores.white}`;
         document.getElementById('game-over').classList.remove('hidden');
-        document.getElementById('game-message').textContent = 'Game Over!';
+        document.getElementById('game-message').textContent = 'Game Over! Click "New Game" to watch another AI vs AI match.';
     }
 
     newGame() {
@@ -553,10 +606,8 @@ class OthelloGame {
         this.renderBoard();
         this.updateGameInfo();
         
-        // Start AI move if black goes first
-        if (this.currentPlayer === this.aiPlayer) {
-            setTimeout(() => this.makeAIMove(), 500);
-        }
+        // Start new AI vs AI game
+        setTimeout(() => this.makeAIMove(), 1000);
     }
 
     toggleHints() {
