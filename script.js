@@ -11,6 +11,8 @@ class OthelloGame {
         this.aiPlayer2 = 'white';
         this.isAIThinking = false;
         this.moveDelay = 500; // 0.5 second delay between moves
+        this.isPaused = false; // Game pause state
+        this.pendingAIMove = null; // Store pending AI move timeout
         
         // Initialize audio for cat meows
         this.initializeAudio();
@@ -25,49 +27,205 @@ class OthelloGame {
     }
 
     initializeAudio() {
-        // Create audio context for generating meow sounds
-        this.audioContext = null;
+        // Create audio objects for real cat meow sounds
+        this.audioEnabled = false;
+        
         try {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // Load real cat meow sounds
+            this.blackCatMeow = new Audio('sounds/black-cat-meow.mp3');
+            this.whiteCatMeow = new Audio('sounds/white-cat-meow.mp3');
+            
+            // Set volume and properties
+            this.blackCatMeow.volume = 0.7;
+            this.whiteCatMeow.volume = 0.7;
+            this.blackCatMeow.preload = 'auto';
+            this.whiteCatMeow.preload = 'auto';
+            
+            // Add error handling for audio loading
+            this.blackCatMeow.addEventListener('error', () => {
+                console.log('Could not load black cat meow sound - using fallback');
+                this.createFallbackAudio();
+            });
+            
+            this.whiteCatMeow.addEventListener('error', () => {
+                console.log('Could not load white cat meow sound - using fallback');
+                this.createFallbackAudio();
+            });
+            
+            // Test if files actually exist
+            this.blackCatMeow.addEventListener('loadstart', () => {
+                console.log('Loading black cat meow...');
+            });
+            
+            this.whiteCatMeow.addEventListener('loadstart', () => {
+                console.log('Loading white cat meow...');
+            });
+            
+            this.blackCatMeow.addEventListener('canplaythrough', () => {
+                console.log('✅ Black cat meow loaded successfully');
+            });
+            
+            this.whiteCatMeow.addEventListener('canplaythrough', () => {
+                console.log('✅ White cat meow loaded successfully');
+            });
+            
+            // Add a one-time click listener to enable audio (required by browsers)
+            const enableAudio = () => {
+                this.audioEnabled = true;
+                
+                // Check if real audio files are loaded
+                if (this.blackCatMeow.readyState >= 2 && this.whiteCatMeow.readyState >= 2) {
+                    this.showAudioStatus('🔊 Real cat meow sounds enabled!');
+                    console.log('✅ Real cat audio files loaded and ready');
+                } else {
+                    this.showAudioStatus('⚠️ Using fallback sounds - add real cat meows to sounds/ folder');
+                    console.log('⚠️ Real cat audio files not found, using fallback');
+                    this.createFallbackAudio();
+                }
+                
+                // Test play the sounds to ensure they're loaded
+                this.blackCatMeow.play().then(() => {
+                    this.blackCatMeow.pause();
+                    this.blackCatMeow.currentTime = 0;
+                }).catch(e => console.log('Black cat sound test failed:', e));
+                
+                this.whiteCatMeow.play().then(() => {
+                    this.whiteCatMeow.pause();
+                    this.whiteCatMeow.currentTime = 0;
+                }).catch(e => console.log('White cat sound test failed:', e));
+                
+                document.removeEventListener('click', enableAudio);
+                document.removeEventListener('keydown', enableAudio);
+            };
+            
+            document.addEventListener('click', enableAudio);
+            document.addEventListener('keydown', enableAudio);
+            
         } catch (e) {
-            console.log('Web Audio API not supported');
+            console.log('Audio not supported, falling back to synthesized sounds');
+            this.createFallbackAudio();
         }
     }
 
+    createFallbackAudio() {
+        // Fallback to Web Audio API if real sounds fail to load
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.useFallbackAudio = true;
+        } catch (e) {
+            console.log('No audio support available');
+        }
+    }
+
+    showAudioStatus(message) {
+        // Create a temporary status message
+        const statusEl = document.createElement('div');
+        statusEl.textContent = message;
+        statusEl.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 14px;
+        `;
+        document.body.appendChild(statusEl);
+        setTimeout(() => statusEl.remove(), 3000);
+    }
+
     playMeow(isWhiteCat = false) {
-        if (!this.audioContext) return;
-        
-        // Resume audio context if suspended (browser autoplay policy)
-        if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+        if (!this.audioEnabled) {
+            console.log('Audio not enabled yet - click anywhere to enable');
+            return;
         }
         
         try {
-            const oscillator = this.audioContext.createOscillator();
-            const gainNode = this.audioContext.createGain();
+            if (this.useFallbackAudio) {
+                // Use synthesized sound as fallback
+                this.playFallbackMeow(isWhiteCat);
+                return;
+            }
             
-            oscillator.connect(gainNode);
-            gainNode.connect(this.audioContext.destination);
+            // Play real cat meow sound
+            const meowSound = isWhiteCat ? this.whiteCatMeow : this.blackCatMeow;
             
-            // Different frequencies for black vs white cats
-            const baseFreq = isWhiteCat ? 800 : 400; // White cats have higher pitch
-            
-            // Create a meow-like sound pattern
-            oscillator.type = 'triangle';
-            oscillator.frequency.setValueAtTime(baseFreq, this.audioContext.currentTime);
-            oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, this.audioContext.currentTime + 0.1);
-            oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, this.audioContext.currentTime + 0.3);
-            
-            // Volume envelope for meow effect
-            gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.3, this.audioContext.currentTime + 0.05);
-            gainNode.gain.exponentialRampToValueAtTime(0.1, this.audioContext.currentTime + 0.2);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.4);
-            
-            oscillator.start(this.audioContext.currentTime);
-            oscillator.stop(this.audioContext.currentTime + 0.4);
+            if (meowSound) {
+                // Reset the audio to the beginning
+                meowSound.currentTime = 0;
+                
+                // Play the sound
+                const playPromise = meowSound.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        console.log(`🐱 Playing real ${isWhiteCat ? 'white' : 'black'} cat meow`);
+                    }).catch(error => {
+                        console.log('Error playing meow:', error);
+                        // Fallback to synthesized sound
+                        this.playFallbackMeow(isWhiteCat);
+                    });
+                }
+            } else {
+                console.log('Meow sound not loaded, using fallback');
+                this.playFallbackMeow(isWhiteCat);
+            }
         } catch (e) {
             console.log('Error playing meow sound:', e);
+            this.playFallbackMeow(isWhiteCat);
+        }
+    }
+
+    playFallbackMeow(isWhiteCat = false) {
+        // More cat-like fallback sound using multiple tones
+        if (this.audioContext) {
+            try {
+                const currentTime = this.audioContext.currentTime;
+                const duration = 0.4;
+                
+                // Create a more cat-like sound with multiple frequencies
+                const osc1 = this.audioContext.createOscillator();
+                const osc2 = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                const filter = this.audioContext.createBiquadFilter();
+                
+                osc1.connect(filter);
+                osc2.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                // Set up filter for more natural sound
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1000, currentTime);
+                
+                // Different pitches for black vs white cats
+                const baseFreq = isWhiteCat ? 600 : 350;
+                
+                // Create a simple meow-like pattern
+                osc1.frequency.setValueAtTime(baseFreq, currentTime);
+                osc1.frequency.linearRampToValueAtTime(baseFreq * 1.5, currentTime + 0.1);
+                osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, currentTime + duration);
+                
+                osc2.frequency.setValueAtTime(baseFreq * 1.2, currentTime);
+                osc2.frequency.linearRampToValueAtTime(baseFreq * 1.8, currentTime + 0.1);
+                osc2.frequency.exponentialRampToValueAtTime(baseFreq, currentTime + duration);
+                
+                // Volume envelope
+                gainNode.gain.setValueAtTime(0, currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.2, currentTime + 0.05);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + duration);
+                
+                osc1.start(currentTime);
+                osc2.start(currentTime);
+                osc1.stop(currentTime + duration);
+                osc2.stop(currentTime + duration);
+                
+                console.log(`🔊 Playing fallback ${isWhiteCat ? 'white' : 'black'} cat sound (not real meow)`);
+            } catch (e) {
+                console.log('Fallback audio failed:', e);
+            }
         }
     }
 
@@ -89,8 +247,21 @@ class OthelloGame {
 
     setupEventListeners() {
         document.getElementById('new-game-btn').addEventListener('click', () => this.newGame());
+        document.getElementById('pause-btn').addEventListener('click', () => this.togglePause());
         document.getElementById('hint-btn').addEventListener('click', () => this.toggleHints());
         document.getElementById('play-again-btn').addEventListener('click', () => this.newGame());
+        document.getElementById('test-audio-btn').addEventListener('click', () => this.testAudio());
+    }
+
+    testAudio() {
+        console.log('Testing real cat meow sounds...');
+        this.showAudioStatus('🐱 Testing black cat meow...');
+        this.playMeow(false); // Black cat meow
+        
+        setTimeout(() => {
+            this.showAudioStatus('🤍 Testing white cat meow...');
+            this.playMeow(true); // White cat meow
+        }, 1200); // Longer delay to let first meow finish
     }
 
     renderBoard() {
@@ -246,7 +417,7 @@ class OthelloGame {
 
     // AI Methods
     makeAIMove() {
-        if (this.gameOver) {
+        if (this.gameOver || this.isPaused) {
             return;
         }
 
@@ -255,6 +426,12 @@ class OthelloGame {
 
         // Use a timeout to show AI is "thinking"
         setTimeout(() => {
+            // Double-check pause state after thinking delay
+            if (this.isPaused || this.gameOver) {
+                this.isAIThinking = false;
+                return;
+            }
+            
             const bestMove = this.findBestMove();
             
             if (bestMove) {
@@ -265,9 +442,9 @@ class OthelloGame {
                 this.updateGameInfo();
                 this.checkGameEnd();
                 
-                // Schedule next AI move if game continues
-                if (!this.gameOver) {
-                    setTimeout(() => this.makeAIMove(), this.moveDelay);
+                // Schedule next AI move if game continues and not paused
+                if (!this.gameOver && !this.isPaused) {
+                    this.pendingAIMove = setTimeout(() => this.makeAIMove(), this.moveDelay);
                 }
             } else {
                 // No valid moves for current player, skip turn
@@ -280,8 +457,10 @@ class OthelloGame {
                     // No moves for either player - game over
                     this.endGame();
                 } else {
-                    // Continue with next player
-                    setTimeout(() => this.makeAIMove(), this.moveDelay);
+                    // Continue with next player if not paused
+                    if (!this.isPaused) {
+                        this.pendingAIMove = setTimeout(() => this.makeAIMove(), this.moveDelay);
+                    }
                 }
             }
             
@@ -566,7 +745,9 @@ class OthelloGame {
         
         const messageElement = document.getElementById('game-message');
         
-        if (this.isAIThinking) {
+        if (this.isPaused) {
+            messageElement.textContent = '⏸️ Game is paused. Click "Resume" to continue the cat battle! 🐾';
+        } else if (this.isAIThinking) {
             const playerName = this.currentPlayer === 'black' ? 'Black Cats' : 'White Cats';
             messageElement.textContent = `${playerName} are planning their pounce... 🐾`;
         } else if (this.validMoves.length === 0 && !this.gameOver) {
@@ -580,7 +761,9 @@ class OthelloGame {
                 if (this.validMoves.length === 0) {
                     this.endGame();
                 } else {
-                    setTimeout(() => this.makeAIMove(), this.moveDelay);
+                    if (!this.isPaused) {
+                        setTimeout(() => this.makeAIMove(), this.moveDelay);
+                    }
                 }
             }, 1500);
         } else if (!this.gameOver) {
@@ -655,6 +838,19 @@ class OthelloGame {
     newGame() {
         document.getElementById('game-over').classList.add('hidden');
         this.isAIThinking = false;
+        this.isPaused = false;
+        
+        // Clear any pending AI moves
+        if (this.pendingAIMove) {
+            clearTimeout(this.pendingAIMove);
+            this.pendingAIMove = null;
+        }
+        
+        // Reset pause button
+        const pauseBtn = document.getElementById('pause-btn');
+        pauseBtn.textContent = 'Pause ⏸️';
+        pauseBtn.classList.remove('resume');
+        
         this.initializeBoard();
         this.renderBoard();
         this.updateGameInfo();
@@ -668,6 +864,40 @@ class OthelloGame {
         const hintBtn = document.getElementById('hint-btn');
         hintBtn.textContent = this.showHints ? 'Hide Hints' : 'Show Hints';
         this.renderBoard();
+    }
+
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        const pauseBtn = document.getElementById('pause-btn');
+        
+        if (this.isPaused) {
+            // Pause the game
+            pauseBtn.textContent = 'Resume ▶️';
+            pauseBtn.classList.add('resume');
+            
+            // Clear any pending AI move
+            if (this.pendingAIMove) {
+                clearTimeout(this.pendingAIMove);
+                this.pendingAIMove = null;
+            }
+            
+            this.showAudioStatus('⏸️ Game Paused');
+            console.log('Game paused');
+        } else {
+            // Resume the game
+            pauseBtn.textContent = 'Pause ⏸️';
+            pauseBtn.classList.remove('resume');
+            
+            this.showAudioStatus('▶️ Game Resumed');
+            console.log('Game resumed');
+            
+            // Resume AI moves if game is not over and not currently thinking
+            if (!this.gameOver && !this.isAIThinking) {
+                setTimeout(() => this.makeAIMove(), 500);
+            }
+        }
+        
+        this.updateGameInfo();
     }
 }
 

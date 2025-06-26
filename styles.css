@@ -143,6 +143,27 @@ h1 {
     background: #00a085;
 }
 
+.btn.resume {
+    background: #00b894;
+    animation: pulse 2s infinite;
+}
+
+.btn.resume:hover {
+    background: #00a085;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(0, 184, 148, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 184, 148, 0);
+    }
+}
+
 /* Game board styles */
 .game-board-container {
     display: flex;
