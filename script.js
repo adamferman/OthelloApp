@@ -12,6 +12,9 @@ class OthelloGame {
         this.isAIThinking = false;
         this.moveDelay = 500; // 0.5 second delay between moves
         
+        // Initialize audio for cat meows
+        this.initializeAudio();
+        
         this.initializeBoard();
         this.setupEventListeners();
         this.renderBoard();
@@ -19,6 +22,53 @@ class OthelloGame {
         
         // Start the AI vs AI game
         setTimeout(() => this.makeAIMove(), 1000); // Initial delay before first move
+    }
+
+    initializeAudio() {
+        // Create audio context for generating meow sounds
+        this.audioContext = null;
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.log('Web Audio API not supported');
+        }
+    }
+
+    playMeow(isWhiteCat = false) {
+        if (!this.audioContext) return;
+        
+        // Resume audio context if suspended (browser autoplay policy)
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+        
+        try {
+            const oscillator = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            // Different frequencies for black vs white cats
+            const baseFreq = isWhiteCat ? 800 : 400; // White cats have higher pitch
+            
+            // Create a meow-like sound pattern
+            oscillator.type = 'triangle';
+            oscillator.frequency.setValueAtTime(baseFreq, this.audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, this.audioContext.currentTime + 0.1);
+            oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, this.audioContext.currentTime + 0.3);
+            
+            // Volume envelope for meow effect
+            gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.3, this.audioContext.currentTime + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.1, this.audioContext.currentTime + 0.2);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.4);
+            
+            oscillator.start(this.audioContext.currentTime);
+            oscillator.stop(this.audioContext.currentTime + 0.4);
+        } catch (e) {
+            console.log('Error playing meow sound:', e);
+        }
     }
 
     initializeBoard() {
@@ -123,6 +173,9 @@ class OthelloGame {
 
     makeMove(row, col) {
         this.board[row][col] = this.currentPlayer;
+
+        // Play meow sound for the current player
+        this.playMeow(this.currentPlayer === 'white');
 
         const directions = [
             [-1, -1], [-1, 0], [-1, 1],
@@ -504,21 +557,21 @@ class OthelloGame {
         const currentPlayerElement = document.getElementById('current-player');
         
         if (this.isAIThinking) {
-            const playerName = this.currentPlayer === 'black' ? 'Black AI' : 'White AI';
-            currentPlayerElement.textContent = `${playerName} is thinking...`;
+            const playerName = this.currentPlayer === 'black' ? 'Black Cats 🐈‍⬛' : 'White Cats 🤍';
+            currentPlayerElement.textContent = `${playerName} are thinking...`;
         } else {
-            const playerName = this.currentPlayer === 'black' ? 'Black AI' : 'White AI';
-            currentPlayerElement.textContent = `${playerName}'s Turn`;
+            const playerName = this.currentPlayer === 'black' ? 'Black Cats 🐈‍⬛' : 'White Cats 🤍';
+            currentPlayerElement.textContent = `${playerName}' Turn`;
         }
         
         const messageElement = document.getElementById('game-message');
         
         if (this.isAIThinking) {
-            const playerName = this.currentPlayer === 'black' ? 'Black AI' : 'White AI';
-            messageElement.textContent = `${playerName} is calculating the best move...`;
+            const playerName = this.currentPlayer === 'black' ? 'Black Cats' : 'White Cats';
+            messageElement.textContent = `${playerName} are planning their pounce... 🐾`;
         } else if (this.validMoves.length === 0 && !this.gameOver) {
-            const playerName = this.currentPlayer === 'black' ? 'Black AI' : 'White AI';
-            messageElement.textContent = `No valid moves for ${playerName}. Switching turns...`;
+            const playerName = this.currentPlayer === 'black' ? 'Black Cats' : 'White Cats';
+            messageElement.textContent = `No valid moves for ${playerName}. Switching turns... 🔄`;
             setTimeout(() => {
                 this.switchPlayer();
                 this.calculateValidMoves();
@@ -531,7 +584,7 @@ class OthelloGame {
                 }
             }, 1500);
         } else if (!this.gameOver) {
-            messageElement.textContent = 'Watch the AI players compete! Click "New Game" to restart.';
+            messageElement.textContent = 'Watch the cats compete! Click "New Game" to restart. 🐱';
         }
     }
 
@@ -585,18 +638,18 @@ class OthelloGame {
         
         if (scores.black > scores.white) {
             winner = 'black';
-            winnerText = 'Black AI Wins!';
+            winnerText = 'Black Cats Win! 🐈‍⬛🏆';
         } else if (scores.white > scores.black) {
             winner = 'white';
-            winnerText = 'White AI Wins!';
+            winnerText = 'White Cats Win! 🤍🏆';
         } else {
-            winnerText = "It's a Tie!";
+            winnerText = "It's a Tie! 🤝🐱";
         }
 
         document.getElementById('winner-text').textContent = winnerText;
-        document.getElementById('final-score').textContent = `Final Score - Black AI: ${scores.black}, White AI: ${scores.white}`;
+        document.getElementById('final-score').textContent = `Final Score - Black Cats: ${scores.black}, White Cats: ${scores.white}`;
         document.getElementById('game-over').classList.remove('hidden');
-        document.getElementById('game-message').textContent = 'Game Over! Click "New Game" to watch another AI vs AI match.';
+        document.getElementById('game-message').textContent = 'Game Over! Click "New Game" to watch another cat battle! 🐾';
     }
 
     newGame() {
